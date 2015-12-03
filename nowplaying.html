@@ -3,12 +3,14 @@
 </head>
 
 <body>
-  <h1>Welcome to Meteor!</h1>
+  <header>
+    <h1>#nowplaying in San Francisco</h1>
+    <p>This page shows #nowplaying tweets in San Francisco that contain a youtube link. It also allows you to post a #nowplaying tweet with a YouTube link.</p>
+  </header>
 
-  {{> hello}}
+  <form class="new-tweet">
+    <label>Video URL:<input type="url" name="videourl" placeholder="http://youtube.com/"></label>
+    <label>Comment:<input type="text" name="comment"></label>
+    <input type="submit" value="Tweet to nowplaying">
+  </form>
 </body>
-
-<template name="hello">
-  <button>Click Me</button>
-  <p>You've pressed the button {{counter}} times.</p>
-</template>
