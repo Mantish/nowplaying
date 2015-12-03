@@ -1,5 +1,11 @@
+Tweets = new Mongo.Collection('tweets');
+
 if (Meteor.isClient) {
-  // code to run only on the client
+  Template.body.helpers({
+    tweets: function () {
+      return Tweets.find({}, {sort: {created_at: -1}, limit: 5});
+    }
+  });
 }
 
 if (Meteor.isServer) {
@@ -15,9 +21,13 @@ if (Meteor.isServer) {
     Twit.get(
       'search/tweets',
       {q: 'youtu #nowplaying filter:links', count: 5},
-      function(err, data, response) {
-        console.log(data)
-      }
+      Meteor.bindEnvironment(function(err, data, response) {
+        data.statuses.forEach(function(el) {
+          Tweets.upsert({id: el.id}, el, {}, function(error, updated) {
+            console.log(updated);
+          });
+        });
+      })
     );
   });
 }
