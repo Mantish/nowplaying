@@ -3,8 +3,12 @@ Tweets = new Mongo.Collection('tweets');
 if (Meteor.isClient) {
   Template.body.helpers({
     tweets: function () {
-      return Tweets.find({}, {sort: {created_at: -1}, limit: 5});
+      return Tweets.find({}, {sort: {id: -1}, limit: 5});
     }
+  });
+
+  Template.tweet.onRendered(function () {
+    window.twttr.widgets.load(this.firstNode);
   });
 }
 
