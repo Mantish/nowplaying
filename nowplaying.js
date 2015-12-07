@@ -1,14 +1,19 @@
 Tweets = new Mongo.Collection('tweets');
 
 if (Meteor.isClient) {
+  Meteor.subscribe('recent-tweets');
+
   Template.body.helpers({
     tweets: function () {
-      return Tweets.find({}, {sort: {id: -1}, limit: 5});
+      return Tweets.find();
     }
   });
 
   Template.tweet.onRendered(function () {
-    window.twttr.widgets.load(this.firstNode);
+    //if twitter js is loaded before the templates are rendered, then we have to call it manually
+    if (twttr) {
+      twttr.widgets.load(this.firstNode);
+    }
   });
 }
 
@@ -33,5 +38,9 @@ if (Meteor.isServer) {
         });
       })
     );
+  });
+
+  Meteor.publish('recent-tweets', function () {
+    return Tweets.find({}, {sort: {id: -1}, limit: 5});
   });
 }
