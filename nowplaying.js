@@ -3,9 +3,13 @@ Tweets = new Mongo.Collection('tweets');
 onYouTubeIframeAPIReady = function() {
   var video_divs = document.getElementsByClassName('youtube-video');
 
+  var video_dimensions = getVideoDimensions();
+
   for (var i = 0; i < video_divs.length; i++) {
     new YT.Player(video_divs[i], {
-      videoId: video_divs[i].dataset.videoId
+      videoId: video_divs[i].dataset.videoId,
+      height: video_dimensions.height,
+      width: video_dimensions.width
     });
   }
 }
@@ -20,6 +24,23 @@ getYoutubeId = function(tweet_urls) {
       return match[4];
     }
   };
+}
+
+getVideoDimensions = function() {
+  var first_li = document.querySelector('.video-list .video-item');
+  var styles = window.getComputedStyle(first_li);
+  var li_width = first_li.clientWidth - parseInt(styles.paddingLeft) - parseInt(styles.paddingRight);
+  var body_width = document.body.clientWidth;
+
+  if (body_width < 600) {
+    w = li_width;
+  } else {
+    w = Math.round(li_width*.49);
+  }
+
+  h = Math.round(w * 0.61);
+
+  return {width: w, height:h};
 }
 
 if (Meteor.isClient) {
@@ -43,8 +64,12 @@ if (Meteor.isClient) {
     }
 
     if (typeof YT != 'undefined' && YT.loaded) {
+      var video_dimensions = getVideoDimensions();
+
       new YT.Player(this.firstNode.children[0], {
-        videoId: this.data.youtube_id
+        videoId: this.data.youtube_id,
+        height: video_dimensions.height,
+        width: video_dimensions.width
       });
     }
   });
@@ -64,6 +89,7 @@ if (Meteor.isServer) {
       'search/tweets',
       {q: 'youtu #nowplaying filter:links', count: 5},
       Meteor.bindEnvironment(function(err, data, response) {
+        console.log(JSON.stringify(data, null, 2));
         data.statuses.forEach(function(el) {
           Tweets.upsert({id: el.id}, el, {}, function(error, updated) {
             console.log(updated);
