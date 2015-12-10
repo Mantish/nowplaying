@@ -1,5 +1,4 @@
 var clientPosition = {};
-
 var Tweets = new Mongo.Collection('tweets');
 
 onYouTubeIframeAPIReady = function() {
@@ -46,15 +45,47 @@ var getVideoDimensions = function() {
 }
 
 var setPosition = function(position) {
-  clientPosition = position.coords;
-  clientPosition.mock = false;
-  console.log('geo position', clientPosition);
+  clientPosition = {
+    latitude: position.coords.latitude,
+    longitude: position.coords.longitude,
+    mock: false
+  }
+
+  Meteor.call('getCity', clientPosition, function(err, response) {
+    var city_object = response.result.places[0];
+    console.log(city_object);
+
+    Session.set('clientCity', city_object.name);
+    Session.set('clientCityId', city_object.id);
+
+    Meteor.call('getGeoTweets', city_object.id, function(err, response) {
+      Session.set('cityTweets', response.statuses);
+    });
+  });
 }
 
 var noPosition = function(err) {
   //if for any readon, we cannot get the position, we'll use San Francisco coordinates
-  clientPosition = {latitude: 37.75776, longitude: -122.47262, mock: true};
-  console.log('error position', clientPosition);
+  clientPosition = {
+    latitude: 37.75776,
+    longitude: -122.47262,
+    mock: true
+  };
+
+  Session.set('clientCity', 'San Francisco');
+  Session.set('clientCityId', '5a110d312052166f');
+
+  Meteor.call('getGeoTweets', '5a110d312052166f', function(err, response) {
+    Session.set('cityTweets', response.statuses);
+  });
+}
+
+var upsertTweets = function(statuses) {
+  statuses.forEach(function(el) {
+    Tweets.upsert({id: el.id}, el, {}, function(error, updated) {
+      console.log(updated);
+    });
+  });
 }
 
 if (Meteor.isClient) {
@@ -65,12 +96,16 @@ if (Meteor.isClient) {
 
   Template.body.helpers({
     tweets: function() {
-      var tweets = Tweets.find().fetch();
+      var tweets = Session.get('cityTweets');
       tweets.forEach(function(el, index) {
         tweets[ index ].youtube_id = getYoutubeId(el.entities.urls);
       });
 
       return tweets;
+    },
+
+    city: function () {
+      return Session.get('clientCity');
     }
   });
 
@@ -135,14 +170,10 @@ if (Meteor.isServer) {
       getTweets: function() {
         Twit.get(
           'search/tweets',
-          {q: 'youtu #nowplaying filter:links', count: 5},
+          {q: 'youtu #nowplaying filter:links', count: 5, result_type: 'recent'},
           Meteor.bindEnvironment(function(err, data, response) {
             console.log(JSON.stringify(data, null, 2));
-            data.statuses.forEach(function(el) {
-              Tweets.upsert({id: el.id}, el, {}, function(error, updated) {
-                console.log(updated);
-              });
-            });
+            upsertTweets(data.statuses);
           })
         );
       },
@@ -152,6 +183,22 @@ if (Meteor.isServer) {
         var syncPostTweet = Meteor.wrapAsync(Twit.post, Twit);
 
         var result = syncPostTweet('statuses/update', tweet_content);
+        return result;
+      },
+
+      getGeoTweets: function(place_id) {
+        //wrapAsync help us get the callback result from the Twit.get function and return it to the client
+        var syncGetTweets = Meteor.wrapAsync(Twit.get, Twit);
+
+        var result = syncGetTweets('search/tweets', {q: '#nowplaying place:'+place_id, count: 5, result_type: 'recent'});
+        return result;
+      },
+
+      getCity: function(location) {
+        //wrapAsync help us get the callback result from the Twit.get function and return it to the client
+        var syncGetTweets = Meteor.wrapAsync(Twit.get, Twit);
+
+        var result = syncGetTweets('geo/reverse_geocode', {lat: location.latitude, long: location.longitude, granularity: 'city'});
         return result;
       }
     });
