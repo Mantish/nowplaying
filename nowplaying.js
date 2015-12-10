@@ -1,4 +1,6 @@
-Tweets = new Mongo.Collection('tweets');
+var clientPosition = {};
+
+var Tweets = new Mongo.Collection('tweets');
 
 onYouTubeIframeAPIReady = function() {
   var video_divs = document.getElementsByClassName('youtube-video');
@@ -14,7 +16,7 @@ onYouTubeIframeAPIReady = function() {
   }
 }
 
-getYoutubeId = function(tweet_urls) {
+var getYoutubeId = function(tweet_urls) {
   var reg_exp = /.*(youtu\.be\/|youtube(-nocookie)?\.com\/(vi?\/|.*u\/\w\/|embed\/|.*vi?=))([\w-]{11}).*/;
 
   for (var i = 0; i < tweet_urls.length; i++) {
@@ -26,7 +28,7 @@ getYoutubeId = function(tweet_urls) {
   };
 }
 
-getVideoDimensions = function() {
+var getVideoDimensions = function() {
   var first_li = document.querySelector('.video-list .video-item');
   var styles = window.getComputedStyle(first_li);
   var li_width = first_li.clientWidth - parseInt(styles.paddingLeft) - parseInt(styles.paddingRight);
@@ -43,17 +45,61 @@ getVideoDimensions = function() {
   return {width: w, height:h};
 }
 
+var setPosition = function(position) {
+  clientPosition = position.coords;
+  clientPosition.mock = false;
+  console.log('geo position', clientPosition);
+}
+
+var noPosition = function(err) {
+  //if for any readon, we cannot get the position, we'll use San Francisco coordinates
+  clientPosition = {latitude: 37.75776, longitude: -122.47262, mock: true};
+  console.log('error position', clientPosition);
+}
+
 if (Meteor.isClient) {
   Meteor.subscribe('recent-tweets');
 
+  //get user position, up to 5 minutes old
+  navigator.geolocation.getCurrentPosition(setPosition, noPosition, {maximumAge: 300000});
+
   Template.body.helpers({
-    tweets: function () {
+    tweets: function() {
       var tweets = Tweets.find().fetch();
       tweets.forEach(function(el, index) {
         tweets[ index ].youtube_id = getYoutubeId(el.entities.urls);
       });
 
       return tweets;
+    }
+  });
+
+  Template.body.events({
+    'submit .new-tweet': function(event) {
+      // Prevent default browser form submit
+      event.preventDefault();
+
+      // Get values from form element
+      var video_url = event.target.videourl.value;
+      var comment = event.target.comment.value;
+      var tweet_content = {status: comment + ' ' + video_url + ' #nowplaying'};
+
+      if (typeof clientPosition.latitude != 'undefined' && ! clientPosition.mock) {
+        tweet_content.lat = clientPosition.latitude;
+        tweet_content.long = clientPosition.longitude;
+      }
+
+      Meteor.call('postTweet', tweet_content, function(err, response) {
+        if(response) {
+          window.alert('Twitter update posted to #nowplaying !');
+        } else {
+          window.alert('There was an error posting your tweet. Please try again later');
+        }
+      });
+
+      // Clear form
+      event.target.videourl.value = '';
+      event.target.comment.value = '';
     }
   });
 
@@ -76,27 +122,41 @@ if (Meteor.isClient) {
 }
 
 if (Meteor.isServer) {
-  Meteor.startup(function () {
+  Meteor.startup(function() {
     // code to run on server at startup
-    Twit = new TwitMaker({
+    var Twit = new TwitMaker({
       consumer_key: Meteor.settings.twitterKey,
       consumer_secret: Meteor.settings.twitterSecret,
       access_token: Meteor.settings.twitterToken,
       access_token_secret: Meteor.settings.twitterTokenSecret
     });
 
-    Twit.get(
-      'search/tweets',
-      {q: 'youtu #nowplaying filter:links', count: 5},
-      Meteor.bindEnvironment(function(err, data, response) {
-        console.log(JSON.stringify(data, null, 2));
-        data.statuses.forEach(function(el) {
-          Tweets.upsert({id: el.id}, el, {}, function(error, updated) {
-            console.log(updated);
-          });
-        });
-      })
-    );
+    Meteor.methods({
+      getTweets: function() {
+        Twit.get(
+          'search/tweets',
+          {q: 'youtu #nowplaying filter:links', count: 5},
+          Meteor.bindEnvironment(function(err, data, response) {
+            console.log(JSON.stringify(data, null, 2));
+            data.statuses.forEach(function(el) {
+              Tweets.upsert({id: el.id}, el, {}, function(error, updated) {
+                console.log(updated);
+              });
+            });
+          })
+        );
+      },
+
+      postTweet: function(tweet_content) {
+        //wrapAsync help us get the callback result from the Twit.post function and return it to the client
+        var syncPostTweet = Meteor.wrapAsync(Twit.post, Twit);
+
+        var result = syncPostTweet('statuses/update', tweet_content);
+        return result;
+      }
+    });
+
+    Meteor.call('getTweets');
   });
 
   Meteor.publish('recent-tweets', function () {
